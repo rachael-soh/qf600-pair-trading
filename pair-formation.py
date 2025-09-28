@@ -74,4 +74,4 @@ if __name__ == "__main__":
     for p in top_pairs:
         print(p)
         # uncomment line below to see the plots.
-        # plot_pair(p, norm_prices)
+        plot_pair(p, norm_prices)
