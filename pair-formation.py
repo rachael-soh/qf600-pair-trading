@@ -75,3 +75,6 @@ if __name__ == "__main__":
         print(p)
         # uncomment line below to see the plots.
         # plot_pair(p, norm_prices)
+ 
+
+ggsdef
