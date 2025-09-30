@@ -4,6 +4,7 @@ from itertools import combinations
 import yfinance as yf
 import matplotlib.pyplot as plt
 
+
 def normalize_prices(prices: pd.Series):
     """Normalize a price series by first value."""
     return prices / prices.iloc[0]
@@ -63,6 +64,8 @@ def plot_pair(pair, norm_prices):
     plt.legend()
     plt.grid(True)
     plt.show()
+    #################################
+    #####Hello World!##############
     
 # ---------------- Main function ---------------- #
 if __name__ == "__main__":
