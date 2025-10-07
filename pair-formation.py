@@ -4,6 +4,7 @@ from itertools import combinations
 import yfinance as yf
 import matplotlib.pyplot as plt
 
+
 def normalize_prices(prices: pd.Series):
     """Normalize a price series by first value."""
     return prices / prices.iloc[0]
@@ -75,3 +76,57 @@ if __name__ == "__main__":
         print(p)
         # uncomment line below to see the plots.
         # plot_pair(p, norm_prices)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---------- Portfolio Returns Computation ------------ #
+
+
+raw_returns = {
+#To clean CRSP data to dynamically pull out returns of pairs based on trading strategy... 
+    "P1": [0.01, -0.05,0.03],
+    "P2": [0.005,0.01,-0.08]
+}
+
+returns = pd.DataFrame(raw_returns)
+
+#risk free rate
+Rf_rate= 0.001
+
+#weights (inital holdings of each pair)
+holdings = np.full(returns.shape[1], 100) #populate initial holdings dynamically
+
+#storage for tracking
+portfolio_returns = []
+portfolio_value = [holdings.sum()]
+
+#need to code a loop to continuously mulitply returns with weights across time 
+for t in range(len(returns)):
+    total_value = holdings.sum()
+    daily_returns= np.dot(holdings, returns.iloc[t])/ total_value #reiterates through every time period, later must update holding values at the end
+    portfolio_returns.append(daily_returns)
+    holdings = holdings * (1 + returns.iloc[t]) #updating holding weights
+    portfolio_value.append(holdings.sum())
+
+#convert to pandas series
+portfolio_returns = pd.Series(portfolio_returns)
+portfolio_value = pd.Series(portfolio_value[1:])
+
+
+print("Daily Portfolio Returns :")
+print(portfolio_returns)
+print("Portfolio Value :")
+print(portfolio_value)
