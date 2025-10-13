@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from itertools import combinations
 from typing import Tuple, List
-
+from data_import import get_stock
 
 def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.DataFrame:
     """    
@@ -29,7 +29,7 @@ def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.D
         and b.exchcd in (1,2,3)
     """
     df = db.raw_sql(sql, date_cols=['date'])
-    df.to_csv(f'crsp_data_{start_date}_{end_date}.csv', index=False)
+    df.to_csv(f'data\crsp_data_{start_date}_{end_date}.csv', index=False)
     return df
 
 def build_cum_total_return_index(df_daily: pd.DataFrame) -> pd.DataFrame:
@@ -38,18 +38,16 @@ def build_cum_total_return_index(df_daily: pd.DataFrame) -> pd.DataFrame:
     - Screen out stocks that have one or more days with no trade
     - Normalize to 1 at the start date
     """
-    # Set values first and coerce any errors to NaN 
+    # Set values types first and coerce any errors to NaN 
     df_daily['ret_num'] = pd.to_numeric(df_daily['ret'], errors='coerce')
     df_daily['date'] = pd.to_datetime(df_daily['date'], errors='coerce')
 
-     # Check for duplicates in the combination of 'date' and 'permco'
+    # Check for duplicates in the combination of 'date' and 'permco'
     if df_daily.duplicated(subset=['date', 'permco']).any():
         print("Duplicate entries found in 'date' and 'permco'. Resolving by taking the mean.")
         # Resolve duplicates by grouping and taking the mean
         numeric_cols = df_daily.select_dtypes(include=['number']).columns  # Select only numeric columns
         df_daily = df_daily.groupby(['date', 'permco'], as_index=False)[numeric_cols].mean()
-
-
 
     # Create new table where date is row, permco is col and the values are the daily returns 
     ret_wide = df_daily.pivot(index='date', columns='permco', values='ret_num').sort_index()
@@ -66,6 +64,10 @@ def build_cum_total_return_index(df_daily: pd.DataFrame) -> pd.DataFrame:
     
     # Normalize it
     cum_index = cum_index.div(cum_index.iloc[0, :])
+
+    # Save it
+    print(f"Saving cumulative returns index to cum_returns_index_{formation_start}_{formation_end}.csv")
+    cum_index.to_csv(f"data\cum_returns_index_{formation_start}_{formation_end}.csv")
 
     return cum_index
 
@@ -109,7 +111,7 @@ def form_pairs_wrds(
     formation_start: str,
     formation_end: str,
     max_pairs_to_return
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> pd.DataFrame:
     """
     End-to-end pairs formation following Gatev et al. 2006 Section 2.1:
       - fetch CRSP daily for formation window
@@ -121,11 +123,12 @@ def form_pairs_wrds(
     - cum_index_df: normalized cum-return series used for SSD calculation (dates x permco)
     """
     # Fetch CRSP data if the csv doesn't exist locally
-    filename = f'crsp_data_{formation_start}_{formation_end}.csv'
+    filename = f'data\crsp_data_{formation_start}_{formation_end}.csv'
     try:
         df_daily = pd.read_csv(filename)
         print(f"Loaded CRSP data from {filename}")
     except FileNotFoundError:
+        print("Fetching CRSP data from WRDS")
         df_daily = fetch_crsp_data(db, formation_start, formation_end)
 
     # Create mormalized cumulative return index
@@ -141,22 +144,23 @@ def form_pairs_wrds(
     matched_pairs = pair_matching(ssd_df, max_pairs=max_pairs_to_return)
     matched_pairs = matched_pairs.sort_values('ssd').reset_index(drop=True)
 
-    return matched_pairs, normalize_cum_returns_index
+    return matched_pairs
 
 
 if __name__ == "__main__":
 
     db = wrds.Connection(wrds_username='sohrac')
 
-    formation_start = "2020-01-01"
-    formation_end   = "2021-01-01"
+    formation_start = "2024-01-01"
+    formation_end   = "2024-12-31"
 
-    matched_pairs_df, cum_index_df = form_pairs_wrds(db, formation_start, formation_end, 3000)
+    matched_pairs_df= form_pairs_wrds(db, formation_start, formation_end, 3000)
 
     print(f"Total pairs formed: {len(matched_pairs_df)}")
     print("Top 20 pairs (smallest SSD):")
     print(matched_pairs_df.head(20))
 
-    # Save outputs
-    matched_pairs_df.to_csv("matched_pairs.csv", index=False)
-    cum_index_df.to_csv("cum_returns_index.csv")
+    # save in directory data
+    matched_pairs_df.to_csv(f"data\matched_pairs_{formation_start}_{formation_end}.csv", index=False)
+    matched_pairs_named = get_stock(matched_pairs_df)
+    matched_pairs_named.to_csv(f"data\matched_pairs_with_name_ticker_{formation_start}_{formation_end}.csv", index=False)
