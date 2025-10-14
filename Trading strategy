@@ -1,0 +1,171 @@
+import wrds
+import pandas as pd
+import numpy as np
+from itertools import combinations
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
+
+# Load your CSV
+pairs = pd.read_csv('data/pairs.csv')
+
+# Set correct data types
+pairs = pairs.astype({
+    'permco_1': 'int64',
+    'permco_2': 'int64',
+    'ssd': 'float64',
+    'comnam_1': 'string',
+    'ticker_1': 'string',
+    'naics_1': 'int64',
+    'comnam_2': 'string',
+    'ticker_2': 'string',
+    'naics_2': 'int64'
+})
+
+
+# NORMALIZE PRICES
+def normalize_prices(price_series):
+    """Normalize prices to start at 100"""
+    return 100 * price_series / price_series.iloc[0]
+
+# CALCULATE SPREAD STATISTICS
+
+def calculate_spread_stats(normalized_prices, pair_row):
+    """
+    Calculate mean and std dev of spread during formation period
+    These will be used for 2-sigma trading thresholds
+    """
+    s1, s2 = pair_row['stock1'], pair_row['stock2']
+    
+    # Calculate spread
+    spread = normalized_prices[s1] - normalized_prices[s2]
+    
+    # Calculate statistics
+    mu_spread = spread.mean() #Average spread
+    sigma_spread = spread.std() #Standard deviation of spread
+    
+    return {
+        'stock1': s1,
+        'stock2': s2,
+        'ssd': pair_row['ssd'],
+        'mu_spread': mu_spread,
+        'sigma_spread': sigma_spread,
+        'threshold_upper': mu_spread + 2 * sigma_spread, #Entry signal: Short Stock 1 and Long Stock 2
+        'threshold_lower': mu_spread - 2 * sigma_spread #Entry signal: Long Stock 1 and Short Stock 2
+    }
+
+# TRADING SIMULATION (6-MONTH PERIOD)
+
+def simulate_trading(trading_data, pair_stats):
+    """
+    Simulate trading strategy for one pair
+    
+    Entry: When spread > mu + 2*sigma OR spread < mu - 2*sigma
+    Exit: When spread crosses back through mean
+    """
+    s1, s2 = pair_stats['stock1'], pair_stats['stock2']
+    mu = pair_stats['mu_spread']
+    upper = pair_stats['threshold_upper']
+    lower = pair_stats['threshold_lower']
+    
+    # Get price series for this pair
+    price_matrix = trading_data.pivot(index='date', columns='permno', values='prc')
+    
+    # Check if both stocks exist in trading period
+    if s1 not in price_matrix.columns or s2 not in price_matrix.columns:
+        return None
+    
+    # Normalize prices
+    norm_s1 = normalize_prices(price_matrix[s1])
+    norm_s2 = normalize_prices(price_matrix[s2])
+    spread = norm_s1 - norm_s2
+    
+    # Track positions and trades
+    position = 0  # 0=closed, 1=long s1/short s2, -1=short s1/long s2
+    entry_date = None
+    entry_spread = None
+    trades = []
+    daily_returns = []
+    
+    for i in range(len(spread)):
+        current_date = spread.index[i]
+        current_spread = spread.iloc[i]
+        
+        # Calculate daily return if position is open
+        if position != 0 and i > 0:
+            # Return = change in spread * position direction
+            spread_change = spread.iloc[i] - spread.iloc[i-1]
+            daily_ret = -position * spread_change  # Negative because we want convergence
+            daily_returns.append(daily_ret)
+        
+        # ENTRY LOGIC
+        if position == 0:
+            if current_spread > upper:
+                # Spread too high: Short s1, Long s2
+                position = -1
+                entry_date = current_date
+                entry_spread = current_spread
+                print(f"  {current_date.date()}: OPEN Short {s1}/Long {s2}, Spread={current_spread:.4f} > {upper:.4f}")
+            
+            elif current_spread < lower:
+                # Spread too low: Long s1, Short s2
+                position = 1
+                entry_date = current_date
+                entry_spread = current_spread
+                print(f"  {current_date.date()}: OPEN Long {s1}/Short {s2}, Spread={current_spread:.4f} < {lower:.4f}")
+        
+        # EXIT LOGIC: Close when spread crosses mean
+        else:
+            # Check for mean crossing
+            if i > 0:
+                prev_spread = spread.iloc[i-1]
+                
+                # Check if we crossed the mean
+                crossed_mean = (prev_spread > mu and current_spread <= mu) or \
+                               (prev_spread < mu and current_spread >= mu)
+                
+                if crossed_mean:
+                    exit_spread = current_spread
+                    pnl = -position * (exit_spread - entry_spread)
+                    
+                    trades.append({
+                        'entry_date': entry_date,
+                        'exit_date': current_date,
+                        'entry_spread': entry_spread,
+                        'exit_spread': exit_spread,
+                        'position': 'Long S1/Short S2' if position == 1 else 'Short S1/Long S2',
+                        'pnl': pnl,
+                        'days_held': (current_date - entry_date).days
+                    })
+                    
+                    print(f"  {current_date.date()}: CLOSE, Spread={current_spread:.4f}, PnL={pnl:.4f}")
+                    
+                    position = 0
+                    entry_date = None
+                    entry_spread = None
+    
+    # Force close at end of period if still open
+    if position != 0:
+        exit_spread = spread.iloc[-1]
+        pnl = -position * (exit_spread - entry_spread)
+        
+        trades.append({
+            'entry_date': entry_date,
+            'exit_date': spread.index[-1],
+            'entry_spread': entry_spread,
+            'exit_spread': exit_spread,
+            'position': 'Long S1/Short S2' if position == 1 else 'Short S1/Long S2',
+            'pnl': pnl,
+            'days_held': (spread.index[-1] - entry_date).days
+        })
+        
+        print(f"  {spread.index[-1].date()}: FORCE CLOSE (end of period), PnL={pnl:.4f}")
+    
+    return {
+        'pair': f"{s1}-{s2}",
+        'num_trades': len(trades),
+        'trades': trades,
+        'total_pnl': sum([t['pnl'] for t in trades]),
+        'avg_pnl': np.mean([t['pnl'] for t in trades]) if trades else 0,
+        'spread_series': spread}
