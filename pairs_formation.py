@@ -13,7 +13,7 @@ def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.D
     See details of codes: https://wrds-www.wharton.upenn.edu/documents/399/Data_Descriptions_Guide.pdf 
     """
     sql = f"""
-    select a.permco, a.date, a.ret, a.prc, a.vol,
+    select a.permco, a.date, a.ret, a.prc, a.vol, a,naics,
        b.comnam, b.shrcd, b.exchcd, b.siccd,
        c.dlret
     from crsp.dsf a
@@ -32,7 +32,7 @@ def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.D
     df.to_csv(f'data\crsp_data_{start_date}_{end_date}.csv', index=False)
     return df
 
-def build_cum_total_return_index(df_daily: pd.DataFrame) -> pd.DataFrame:
+def build_cum_total_return_index(df_daily: pd.DataFrame, formation_start, formation_end) -> pd.DataFrame:
     """
     Build cumulative total-return index for each permco,
     - Screen out stocks that have one or more days with no trade
@@ -133,7 +133,7 @@ def form_pairs_wrds(
 
     # Create mormalized cumulative return index
     print("Building cumulative return index")
-    normalize_cum_returns_index = build_cum_total_return_index(df_daily)
+    normalize_cum_returns_index = build_cum_total_return_index(df_daily, formation_start, formation_end)
 
     # Compute SSDs 
     print("Computing pairwise SSD")

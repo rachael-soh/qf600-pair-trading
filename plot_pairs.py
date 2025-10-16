@@ -1,16 +1,14 @@
-# plot the pairs in the matched_pairs_with_name_ticker.csv
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def plot_pair(pair_number, use_dated=True):
-    # Read the CSV file
-    formation_start = "2024-09-01"
-    formation_end   = "2025-09-01"
-    if use_dated:
-        pairs = pd.read_csv(f'data\matched_pairs_with_name_ticker_{formation_start}_{formation_end}.csv')
-    else:
-        pairs = pd.read_csv('data\matched_pairs_with_name_ticker.csv')
-
+def plot_pair(pair_number, filename):
+    """ Plot the price and spread of a given pair from the matched pairs file.
+    Args:
+        pair_number (int): The pair number to plot (1-indexed).
+        filename (str): The path to the matched pairs CSV file.
+    """
+    pairs = pd.read_csv('data/matched_pairs/' + filename)
+    
     # get row number of index pair_number
     pair_info = pairs.iloc[pair_number-1]
     if pair_info.empty:
@@ -22,18 +20,10 @@ def plot_pair(pair_number, use_dated=True):
     permco_2 = pair_info['permco_2']
     comnam_1 = pair_info['comnam_1']
     comnam_2 = pair_info['comnam_2']
-    
-    # Get returns
-    if use_dated:
-        returns = pd.read_csv(
-        f'data\cum_returns_index_{formation_start}_{formation_end}.csv',
-        index_col=0,              # Use first column (dates) as index
-        parse_dates=True,         # Parse index as dates
-        dtype=float               # Try to load columns as float (permco IDs)
-        )
-    else:
-        returns = pd.read_csv(
-        'data\cum_returns_index.csv',
+
+    returns_file = 'data/returns/' + filename
+    returns = pd.read_csv(
+        returns_file,
         index_col=0,              # Use first column (dates) as index
         parse_dates=True,         # Parse index as dates
         dtype=float               # Try to load columns as float (permco IDs)
@@ -54,7 +44,7 @@ def plot_pair(pair_number, use_dated=True):
     ax1.set_ylabel('Price')
     ax1.tick_params(axis='y')
     plt.xticks(rotation=45)
-
+    
     # Add legends
     lines_1, labels_1 = ax1.get_legend_handles_labels()
     ax1.legend(lines_1, labels_1, loc='upper left')
@@ -63,4 +53,5 @@ def plot_pair(pair_number, use_dated=True):
     plt.tight_layout()
     plt.show()
 
-plot_pair(1)
+# just give the filename. 1 gives top pair
+plot_pair(1, 'Accommodation_and_Food_Services_2024-01-01_2024-12-31.csv')
