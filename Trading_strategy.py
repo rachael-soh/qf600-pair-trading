@@ -5,6 +5,8 @@ from itertools import combinations
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import warnings
+import csv
+
 warnings.filterwarnings('ignore')
 
 # ---LOAD THE CSV FILE ---
@@ -22,11 +24,11 @@ type_map = {
     'permco_2': 'int64',
     'ssd': 'float64',
     'comnam_1': 'string',
-    'ticker_1': 'string',
-    'naics_1': 'Int64',
+    # 'ticker_1': 'string',
+    # 'naics_1': 'Int64',
     'comnam_2': 'string',
-    'ticker_2': 'string',
-    'naics_2': 'Int64'
+    # 'ticker_2': 'string',
+    # 'naics_2': 'Int64'
 }
 
 # Apply conversions safely
@@ -54,7 +56,7 @@ def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.D
     return db.raw_sql(query, date_cols=['date'])
 
 # Connect to WRDS
-db = wrds.Connection(wrds_username='andygse')
+db = wrds.Connection(wrds_username='sohrac')
 
 # Pull CRSP data for formation period
 data = fetch_crsp_data(db, '2024-01-01', '2024-06-30')
@@ -101,8 +103,8 @@ def calculate_spread_stats(formation_data, pair_row):
     return {
         'stock1': s1,
         'stock2': s2,
-        'ticker1': pair_row['ticker_1'],
-        'ticker2': pair_row['ticker_2'],
+        'comnam1': pair_row['comnam_1'],
+        'comnam2': pair_row['comnam_2'],
         'ssd': pair_row['ssd'],
         'mu_spread': mu_spread,
         'sigma_spread': sigma_spread,
@@ -217,7 +219,7 @@ def simulate_trading(trading_data, pair_stats):
         print(f"  {spread.index[-1].date()}: FORCE CLOSE (end of period), PnL={pnl:.4f}")
     
     return {
-        'pair': f"{pair_stats['ticker1']}-{pair_stats['ticker2']}",
+        'pair': f"{pair_stats['comnam1']}-{pair_stats['comnam2']}",
         'stock1': s1,
         'stock2': s2,
         'num_trades': len(trades),
@@ -234,8 +236,8 @@ if __name__ == "__main__":
     
     # Process first 5 pairs for testing
     results = []
-    for idx, (_, pair_row) in enumerate(returns.head(5).iterrows()):
-        print(f"\n--- Processing Pair {idx+1}: {pair_row['ticker_1']} vs {pair_row['ticker_2']} ---")
+    for idx, (_, pair_row) in enumerate(returns.iterrows()):
+        print(f"\n--- Processing Pair {idx+1}: {pair_row['permco_1']} vs {pair_row['permco_2']} ---")
         
         pair_stats = calculate_spread_stats(data, pair_row)
         if pair_stats:
@@ -255,6 +257,8 @@ if __name__ == "__main__":
             'Total_PnL': r['total_pnl'],
             'Avg_PnL': r['avg_pnl']
         } for r in results])
+        summary_df = summary_df.sort_values(by='Total_PnL', ascending=False)
+        summary_df.to_csv('trading_summary.csv', index=False)
         print(summary_df)
     else:
         print("No valid trades generated")
