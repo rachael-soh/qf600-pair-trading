@@ -64,8 +64,7 @@ def plot_pair(pair, norm_prices):
     plt.legend()
     plt.grid(True)
     plt.show()
-    #################################
-    
+
     
 # ---------------- Main function ---------------- #
 if __name__ == "__main__":
