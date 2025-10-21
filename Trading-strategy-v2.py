@@ -296,6 +296,7 @@ if __name__ == "__main__":
         top_20_df = pd.DataFrame(top_20_data)
         top_20_df.to_csv('top_20_pairs_with_dates.csv', index=False)
         
+
         # Summary by pair
         summary_df = top_20_df.groupby('Pair').agg({
             'Rank': 'first',
@@ -312,5 +313,102 @@ if __name__ == "__main__":
         print("\n\nDetailed trades:")
         print(top_20_df.to_string(index=False))
         
-    else:
+        # Visualization: Top 5 pairs - Normalized price charts
+        print("\n" + "="*80)
+    print("GENERATING CHARTS FOR TOP 5 PAIRS")
+    print("="*80)
+    
+    # Get top 5 pairs (already sorted above)
+    top_5 = results_sorted[:5]
+    
+    # Create figure with 5 subplots (one for each pair)
+    fig, axes = plt.subplots(5, 1, figsize=(14, 20))
+    fig.suptitle('Top 5 Pairs Trading Strategy - Normalized Cumulative Returns', 
+                 fontsize=16, fontweight='bold', y=0.995)
+    
+    for idx, result in enumerate(top_5):
+        ax = axes[idx]
+        
+        # Get individual stock data for this pair
+        s1, s2 = result['stock1'], result['stock2']
+        
+        # Fetch formation + trading period data for visualization
+        full_data = fetch_crsp_data(db, '2024-01-01', '2024-12-31')
+        
+        s1_data = full_data[full_data['permco'] == s1].sort_values('date').set_index('date')['ret']
+        s2_data = full_data[full_data['permco'] == s2].sort_values('date').set_index('date')['ret']
+        
+        # Calculate cumulative returns (normalized to start at 1.0)
+        cum_s1 = (1 + s1_data).cumprod()
+        cum_s2 = (1 + s2_data).cumprod()
+        
+        # Align data
+        combined = pd.DataFrame({'stock1': cum_s1, 'stock2': cum_s2})
+        combined = combined.fillna(method='ffill').dropna()
+        
+        # Plot both stocks
+        ax.plot(combined.index, combined['stock1'], 
+                label=f'Stock 1 (PERMCO: {s1})', 
+                linewidth=2, color='#1f77b4', alpha=0.8)
+        ax.plot(combined.index, combined['stock2'], 
+                label=f'Stock 2 (PERMCO: {s2})', 
+                linewidth=2, color='#ff7f0e', alpha=0.8)
+        
+        # Mark trade entry and exit points
+        for trade in result['trades']:
+            diverge_date = trade['diverge_date']
+            converge_date = trade['converge_date']
+            
+            # Entry point (divergence)
+            ax.axvline(x=diverge_date, color='red', linestyle='--', 
+                      alpha=0.3, linewidth=1)
+            
+            # Exit point (convergence)
+            ax.axvline(x=converge_date, color='green', linestyle='--', 
+                      alpha=0.3, linewidth=1)
+        
+        # Add formation period separator
+        formation_end = pd.Timestamp('2024-06-30')
+        ax.axvline(x=formation_end, color='purple', linestyle='-', 
+                  linewidth=2, alpha=0.5, label='Formation/Trading Split')
+        
+        # Formatting
+        ax.set_title(f'Rank #{idx+1}: {result["pair"]}\n'
+                    f'Sharpe: {result["sharpe_ratio"]:.3f} | '
+                    f'Trades: {result["num_trades"]} | '
+                    f'Total PnL: {result["total_pnl"]:.4f}',
+                    fontsize=11, fontweight='bold', pad=10)
+        
+        ax.set_xlabel('Date', fontsize=10)
+        ax.set_ylabel('Normalized Price (Starting at 1.0)', fontsize=10)
+        ax.legend(loc='best', fontsize=9)
+        ax.grid(True, alpha=0.3, linestyle=':')
+        
+        # Rotate x-axis labels
+        ax.tick_params(axis='x', rotation=45)
+        
+        # Format y-axis
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.2f}'))
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save figure
+    plt.savefig('top_5_pairs_normalized_prices.png', dpi=300, bbox_inches='tight')
+    print("\n✓ Chart saved as 'top_5_pairs_normalized_prices.png'")
+    
+    # Show plot
+    plt.show()
+    
+    print("\nVisualization complete!")
+    print("="*80)
+    
+        
+else:
         print("No valid trades generated")
+
+if db:
+    db.close()
+    print("\nWRDS connection closed.")
+
+    
