@@ -1,0 +1,107 @@
+import wrds
+import psycopg2
+import pandas as pd
+import numpy as np
+from itertools import combinations
+import matplotlib.pyplot as plt
+
+
+# -----------------------------------------------
+# Connect to WRDS and get CRSP daily price data
+# -----------------------------------------------
+def load_crsp_data(start_date='2020-01-01', end_date='2021-12-31'):
+    db = wrds.Connection(wrds_username='seansim')
+    print ("Connected to WRDS Successfully!")
+
+    query = f"""
+        select a.permno, a.date, a.prc, a.ret,
+               b.shrcd, b.exchcd, b.siccd
+        from crsp.dsf a
+        left join crsp.dsenames b
+          on a.permno = b.permno
+         and a.date >= b.namedt
+         and a.date <= b.nameendt
+        where a.date between '{start_date}' and '{end_date}'
+          and b.shrcd in (10,11)
+          and b.exchcd in (1,2,3)
+    """
+    data = db.raw_sql(query, date_cols=['date'])
+    db.close()
+
+    # Convert price to positive values
+    data['prc'] = data['prc'].abs()
+    return data
+
+
+# -----------------------------------------------
+# Helper functions
+# -----------------------------------------------
+def normalize_prices(prices: pd.Series):
+    """Normalize a price series by first value."""
+    return prices / prices.iloc[0]
+
+def sum_squared_deviation(x: pd.Series, y: pd.Series):
+    """Compute SSD between two normalized price series."""
+    return np.sum((x - y) ** 2)
+
+
+# -----------------------------------------------
+# Main pair formation logic (from CRSP data)
+# -----------------------------------------------
+def form_pairs_from_wrds(crsp_data, top_n=5):
+    """
+    From CRSP data, create price matrix, normalize, and find top N pairs.
+    """
+    # Pivot data: each column = stock (permno), each row = date
+    price_data = crsp_data.pivot(index='date', columns='permno', values='prc')
+    
+    # Drop stocks with missing data
+    price_data = price_data.dropna(axis=1)
+
+    # Normalize each stock's price
+    norm_prices = price_data.apply(normalize_prices)
+
+    # Compute SSD for all pairs
+    pairs = []
+    for s1, s2 in combinations(norm_prices.columns, 2):
+        ssd = sum_squared_deviation(norm_prices[s1], norm_prices[s2])
+        print(f"Comparing {s1} and {s2}: SSD = {ssd}")
+        pairs.append((s1, s2, ssd))
+
+    # Sort pairs by smallest SSD
+    pairs_sorted = sorted(pairs, key=lambda x: x[2])
+    return pairs_sorted[:top_n], norm_prices
+
+
+# -----------------------------------------------
+# Plotting function
+# -----------------------------------------------
+def plot_pair(pair, norm_prices):
+    s1, s2, ssd = pair
+    plt.figure(figsize=(10,6))
+    plt.plot(norm_prices[s1], label=f"PERMNO {s1}", linewidth=2)
+    plt.plot(norm_prices[s2], label=f"PERMNO {s2}", linewidth=2)
+    plt.title(f"Top Pair: {s1} & {s2} (SSD={ssd:.2f})")
+    plt.xlabel("Date")
+    plt.ylabel("Normalized Price")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+# -----------------------------------------------
+# Run everything
+# -----------------------------------------------
+if __name__ == "__main__":
+    print("Loading CRSP data from WRDS...")
+    crsp_data = load_crsp_data(start_date='2024-01-01', end_date='2024-12-31')
+    print(f"Loaded {len(crsp_data)} rows.")
+
+    top_n = 5
+    top_pairs, norm_prices = form_pairs_from_wrds(crsp_data, top_n=top_n)
+
+    print(f"\nTop {top_n} Pairs (by smallest SSD):")
+    for p in top_pairs:
+        print(p)
+        # Uncomment below to visualize
+        # plot_pair(p, norm_prices)

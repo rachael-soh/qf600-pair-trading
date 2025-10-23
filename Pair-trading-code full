@@ -1,0 +1,412 @@
+import wrds
+import pandas as pd
+import numpy as np
+from itertools import combinations
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
+
+# ===============================================
+# STEP 1: DATA LOADING
+# ===============================================
+
+def load_crsp_data(start_date, end_date, username='andygse'):
+    """
+    Load CRSP data from WRDS for the specified period
+    Filters for common stocks on major exchanges with daily trading
+    """
+    print(f"Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=username)
+    print("Connected to WRDS Successfully!")
+    
+    query = f"""
+        select a.permno, a.date, a.prc, a.ret, a.vol,
+               b.shrcd, b.exchcd, b.siccd
+        from crsp.dsf a
+        left join crsp.dsenames b
+            on a.permno = b.permno
+            and a.date >= b.namedt
+            and a.date <= b.nameendt
+        where a.date between '{start_date}' and '{end_date}'
+            and b.shrcd in (10,11)
+            and b.exchcd in (1,2,3)
+        order by a.permno, a.date
+    """
+    
+    data = db.raw_sql(query, date_cols=['date'])
+    db.close()
+    
+    # Convert price to positive values (CRSP uses negative for bid/ask averages)
+    data['prc'] = data['prc'].abs()
+    
+    print(f"Loaded {len(data)} rows for {data['permno'].nunique()} stocks")
+    return data
+
+# ===============================================
+# STEP 2: PAIR FORMATION (12-MONTH PERIOD)
+# ===============================================
+
+def filter_liquid_stocks(data):
+    """
+    GGR Method: Remove stocks with ANY non-trading days
+    This ensures liquidity and facilitates pair formation
+    """
+    # Count trading days per stock
+    trading_days = data.groupby('permno')['date'].count()
+    max_days = trading_days.max()
+    
+    # Keep only stocks that traded every single day
+    liquid_permnos = trading_days[trading_days == max_days].index
+    filtered_data = data[data['permno'].isin(liquid_permnos)]
+    
+    print(f"Filtered from {data['permno'].nunique()} to {len(liquid_permnos)} liquid stocks")
+    return filtered_data
+
+def normalize_prices(prices: pd.Series):
+    """Normalize price series to start at 1.0"""
+    return prices / prices.iloc[0]
+
+def calculate_ssd(x: pd.Series, y: pd.Series):
+    """Calculate Sum of Squared Deviations between two normalized series"""
+    return np.sum((x - y) ** 2)
+
+def form_pairs(formation_data, top_n=20):
+    """
+    Form pairs using minimum distance method (GGR approach)
+    Returns top N pairs with smallest SSD
+    """
+    print("\n=== PAIR FORMATION ===")
+    
+    # Create price matrix: rows=dates, columns=stocks
+    price_matrix = formation_data.pivot(index='date', columns='permno', values='prc')
+    
+    # Drop any stocks with missing data
+    price_matrix = price_matrix.dropna(axis=1)
+    print(f"Price matrix: {len(price_matrix)} days × {len(price_matrix.columns)} stocks")
+    
+    # Normalize all prices to start at 1.0
+    normalized_prices = price_matrix.apply(normalize_prices, axis=0)
+    
+    # Calculate SSD for all possible pairs
+    print(f"Calculating SSD for {len(list(combinations(price_matrix.columns, 2)))} pairs...")
+    pairs_list = []
+    
+    for i, (s1, s2) in enumerate(combinations(normalized_prices.columns, 2)):
+        ssd = calculate_ssd(normalized_prices[s1], normalized_prices[s2])
+        pairs_list.append({
+            'stock1': s1,
+            'stock2': s2,
+            'ssd': ssd
+        })
+        
+        if (i + 1) % 10000 == 0:
+            print(f"  Processed {i + 1} pairs...")
+    
+    # Convert to DataFrame and sort by SSD
+    pairs_df = pd.DataFrame(pairs_list)
+    pairs_df = pairs_df.sort_values('ssd').reset_index(drop=True)
+    
+    # Select top N pairs
+    top_pairs = pairs_df.head(top_n)
+    
+    print(f"\nTop {top_n} pairs selected (smallest SSD)")
+    print(top_pairs)
+    
+    return top_pairs, normalized_prices
+
+# ===============================================
+# STEP 3: CALCULATE SPREAD STATISTICS
+# ===============================================
+
+def calculate_spread_stats(normalized_prices, pair_row):
+    """
+    Calculate mean and std dev of spread during formation period
+    These will be used for 2-sigma trading thresholds
+    """
+    s1, s2 = pair_row['stock1'], pair_row['stock2']
+    
+    # Calculate spread
+    spread = normalized_prices[s1] - normalized_prices[s2]
+    
+    # Calculate statistics
+    mu_spread = spread.mean()
+    sigma_spread = spread.std()
+    
+    return {
+        'stock1': s1,
+        'stock2': s2,
+        'ssd': pair_row['ssd'],
+        'mu_spread': mu_spread,
+        'sigma_spread': sigma_spread,
+        'threshold_upper': mu_spread + 2 * sigma_spread,
+        'threshold_lower': mu_spread - 2 * sigma_spread
+    }
+
+# ===============================================
+# STEP 4: TRADING SIMULATION (6-MONTH PERIOD)
+# ===============================================
+
+def simulate_trading(trading_data, pair_stats):
+    """
+    Simulate GGR trading strategy for one pair
+    
+    Entry: When spread > mu + 2*sigma OR spread < mu - 2*sigma
+    Exit: When spread crosses back through mean
+    """
+    s1, s2 = pair_stats['stock1'], pair_stats['stock2']
+    mu = pair_stats['mu_spread']
+    upper = pair_stats['threshold_upper']
+    lower = pair_stats['threshold_lower']
+    
+    # Get price series for this pair
+    price_matrix = trading_data.pivot(index='date', columns='permno', values='prc')
+    
+    # Check if both stocks exist in trading period
+    if s1 not in price_matrix.columns or s2 not in price_matrix.columns:
+        return None
+    
+    # Normalize prices
+    norm_s1 = normalize_prices(price_matrix[s1])
+    norm_s2 = normalize_prices(price_matrix[s2])
+    spread = norm_s1 - norm_s2
+    
+    # Track positions and trades
+    position = 0  # 0=closed, 1=long s1/short s2, -1=short s1/long s2
+    entry_date = None
+    entry_spread = None
+    trades = []
+    daily_returns = []
+    
+    for i in range(len(spread)):
+        current_date = spread.index[i]
+        current_spread = spread.iloc[i]
+        
+        # Calculate daily return if position is open
+        if position != 0 and i > 0:
+            # Return = change in spread * position direction
+            spread_change = spread.iloc[i] - spread.iloc[i-1]
+            daily_ret = -position * spread_change  # Negative because we want convergence
+            daily_returns.append(daily_ret)
+        
+        # ENTRY LOGIC
+        if position == 0:
+            if current_spread > upper:
+                # Spread too high: Short s1, Long s2
+                position = -1
+                entry_date = current_date
+                entry_spread = current_spread
+                print(f"  {current_date.date()}: OPEN Short {s1}/Long {s2}, Spread={current_spread:.4f} > {upper:.4f}")
+            
+            elif current_spread < lower:
+                # Spread too low: Long s1, Short s2
+                position = 1
+                entry_date = current_date
+                entry_spread = current_spread
+                print(f"  {current_date.date()}: OPEN Long {s1}/Short {s2}, Spread={current_spread:.4f} < {lower:.4f}")
+        
+        # EXIT LOGIC: Close when spread crosses mean
+        else:
+            # Check for mean crossing
+            if i > 0:
+                prev_spread = spread.iloc[i-1]
+                
+                # Check if we crossed the mean
+                crossed_mean = (prev_spread > mu and current_spread <= mu) or \
+                               (prev_spread < mu and current_spread >= mu)
+                
+                if crossed_mean:
+                    exit_spread = current_spread
+                    pnl = -position * (exit_spread - entry_spread)
+                    
+                    trades.append({
+                        'entry_date': entry_date,
+                        'exit_date': current_date,
+                        'entry_spread': entry_spread,
+                        'exit_spread': exit_spread,
+                        'position': 'Long S1/Short S2' if position == 1 else 'Short S1/Long S2',
+                        'pnl': pnl,
+                        'days_held': (current_date - entry_date).days
+                    })
+                    
+                    print(f"  {current_date.date()}: CLOSE, Spread={current_spread:.4f}, PnL={pnl:.4f}")
+                    
+                    position = 0
+                    entry_date = None
+                    entry_spread = None
+    
+    # Force close at end of period if still open
+    if position != 0:
+        exit_spread = spread.iloc[-1]
+        pnl = -position * (exit_spread - entry_spread)
+        
+        trades.append({
+            'entry_date': entry_date,
+            'exit_date': spread.index[-1],
+            'entry_spread': entry_spread,
+            'exit_spread': exit_spread,
+            'position': 'Long S1/Short S2' if position == 1 else 'Short S1/Long S2',
+            'pnl': pnl,
+            'days_held': (spread.index[-1] - entry_date).days
+        })
+        
+        print(f"  {spread.index[-1].date()}: FORCE CLOSE (end of period), PnL={pnl:.4f}")
+    
+    return {
+        'pair': f"{s1}-{s2}",
+        'num_trades': len(trades),
+        'trades': trades,
+        'total_pnl': sum([t['pnl'] for t in trades]),
+        'avg_pnl': np.mean([t['pnl'] for t in trades]) if trades else 0,
+        'spread_series': spread
+    }
+
+# ===============================================
+# STEP 5: PORTFOLIO ANALYSIS
+# ===============================================
+
+def analyze_portfolio(all_results):
+    """
+    Analyze overall portfolio performance
+    Calculate returns, Sharpe ratio, etc.
+    """
+    print("\n=== PORTFOLIO ANALYSIS ===")
+    
+    # Filter out None results (pairs that didn't exist in trading period)
+    valid_results = [r for r in all_results if r is not None]
+    
+    if not valid_results:
+        print("No valid trading results!")
+        return
+    
+    # Calculate statistics
+    total_pnl = sum([r['total_pnl'] for r in valid_results])
+    avg_pnl_per_pair = total_pnl / len(valid_results)
+    
+    total_trades = sum([r['num_trades'] for r in valid_results])
+    winning_trades = sum([1 for r in valid_results for t in r['trades'] if t['pnl'] > 0])
+    
+    print(f"\nNumber of pairs: {len(valid_results)}")
+    print(f"Total trades: {total_trades}")
+    print(f"Winning trades: {winning_trades} ({100*winning_trades/total_trades:.1f}%)")
+    print(f"\nTotal P&L: {total_pnl:.4f}")
+    print(f"Average P&L per pair: {avg_pnl_per_pair:.4f}")
+    
+    # Show individual pair performance
+    print("\n=== INDIVIDUAL PAIR PERFORMANCE ===")
+    for r in valid_results:
+        if r['num_trades'] > 0:
+            print(f"{r['pair']}: {r['num_trades']} trades, Total PnL={r['total_pnl']:.4f}, Avg PnL={r['avg_pnl']:.4f}")
+
+# ===============================================
+# STEP 6: VISUALIZATION
+# ===============================================
+
+def plot_pair_trading(result, pair_stats):
+    """
+    Visualize pair trading: normalized prices, spread, and trades
+    """
+    if result is None or result['num_trades'] == 0:
+        print("No trades to plot")
+        return
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+    
+    # Get the data
+    spread = result['spread_series']
+    trades = result['trades']
+    
+    # Plot 1: Spread with thresholds
+    ax1.plot(spread.index, spread.values, label='Spread', linewidth=2, color='blue')
+    ax1.axhline(y=pair_stats['mu_spread'], color='green', linestyle='--', label='Mean', linewidth=1.5)
+    ax1.axhline(y=pair_stats['threshold_upper'], color='red', linestyle='--', label='+2σ', linewidth=1.5)
+    ax1.axhline(y=pair_stats['threshold_lower'], color='red', linestyle='--', label='-2σ', linewidth=1.5)
+    
+    # Mark entry and exit points
+    for trade in trades:
+        ax1.scatter(trade['entry_date'], trade['entry_spread'], color='green', s=100, marker='^', zorder=5)
+        ax1.scatter(trade['exit_date'], trade['exit_spread'], color='red', s=100, marker='v', zorder=5)
+    
+    ax1.set_title(f"Pair Trading: {result['pair']}\nSpread and Trading Signals", fontsize=14, fontweight='bold')
+    ax1.set_xlabel('Date')
+    ax1.set_ylabel('Spread')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Cumulative P&L
+    cumulative_pnl = np.cumsum([t['pnl'] for t in trades])
+    trade_dates = [t['exit_date'] for t in trades]
+    
+    ax2.plot(trade_dates, cumulative_pnl, marker='o', linewidth=2, color='purple')
+    ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+    ax2.set_title('Cumulative P&L', fontsize=14, fontweight='bold')
+    ax2.set_xlabel('Date')
+    ax2.set_ylabel('Cumulative P&L')
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.show()
+
+# ===============================================
+# MAIN EXECUTION
+# ===============================================
+
+def main():
+    """
+    Main function to run complete GGR pairs trading strategy
+    """
+    print("=" * 60)
+    print("GGR PAIRS TRADING STRATEGY")
+    print("=" * 60)
+    
+    # Define periods (GGR: 12-month formation, 6-month trading)
+    formation_start = '2020-01-01'
+    formation_end = '2020-12-31'
+    trading_start = '2021-01-01'
+    trading_end = '2021-06-30'
+    
+    # STEP 1: Load formation period data
+    print("\n[1/6] Loading formation period data...")
+    formation_data = load_crsp_data(formation_start, formation_end)
+    formation_data = filter_liquid_stocks(formation_data)
+    
+    # STEP 2: Form pairs
+    print("\n[2/6] Forming pairs...")
+    top_n_pairs = 5  # Start with top 5 pairs
+    top_pairs, normalized_prices = form_pairs(formation_data, top_n=top_n_pairs)
+    
+    # STEP 3: Calculate spread statistics for each pair
+    print("\n[3/6] Calculating spread statistics...")
+    pair_stats_list = []
+    for idx, pair_row in top_pairs.iterrows():
+        stats = calculate_spread_stats(normalized_prices, pair_row)
+        pair_stats_list.append(stats)
+        print(f"Pair {stats['stock1']}-{stats['stock2']}: μ={stats['mu_spread']:.4f}, σ={stats['sigma_spread']:.4f}")
+    
+    # STEP 4: Load trading period data
+    print("\n[4/6] Loading trading period data...")
+    trading_data = load_crsp_data(trading_start, trading_end)
+    
+    # STEP 5: Simulate trading for each pair
+    print("\n[5/6] Simulating trading...")
+    all_results = []
+    for pair_stats in pair_stats_list:
+        print(f"\nTrading pair {pair_stats['stock1']}-{pair_stats['stock2']}:")
+        result = simulate_trading(trading_data, pair_stats)
+        all_results.append(result)
+    
+    # STEP 6: Analyze results
+    print("\n[6/6] Analyzing results...")
+    analyze_portfolio(all_results)
+    
+    # Plot first pair if it traded
+    if all_results[0] is not None and all_results[0]['num_trades'] > 0:
+        print("\nGenerating plot for first pair...")
+        plot_pair_trading(all_results[0], pair_stats_list[0])
+    
+    print("\n" + "=" * 60)
+    print("STRATEGY COMPLETE")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    main()
