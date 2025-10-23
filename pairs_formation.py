@@ -4,6 +4,8 @@ import numpy as np
 from itertools import combinations
 from typing import Tuple, List
 from data_import import get_stock
+from datetime import date,timedelta
+from dateutil.relativedelta import relativedelta
 
 def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.DataFrame:
     """    
@@ -29,7 +31,7 @@ def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.D
         and b.exchcd in (1,2,3)
     """
     df = db.raw_sql(sql, date_cols=['date'])
-    df.to_csv(f'data\crsp_data_{start_date}_{end_date}.csv', index=False)
+    df.to_csv(f'data/crsp_data/crsp_data_{start_date}_{end_date}.csv', index=False)
     return df
 
 def build_cum_total_return_index(df_daily: pd.DataFrame, formation_start, formation_end) -> pd.DataFrame:
@@ -67,7 +69,7 @@ def build_cum_total_return_index(df_daily: pd.DataFrame, formation_start, format
 
     # Save it
     print(f"Saving cumulative returns index to cum_returns_index_{formation_start}_{formation_end}.csv")
-    cum_index.to_csv(f"data\cum_returns_index_{formation_start}_{formation_end}.csv")
+    cum_index.to_csv(f"data/cum_returns/cum_returns_index_{formation_start}_{formation_end}.csv")
 
     return cum_index
 
@@ -123,7 +125,7 @@ def form_pairs_wrds(
     - cum_index_df: normalized cum-return series used for SSD calculation (dates x permco)
     """
     # Fetch CRSP data if the csv doesn't exist locally
-    filename = f'data\crsp_data_{formation_start}_{formation_end}.csv'
+    filename = f'data/crsp_data/crsp_data_{formation_start}_{formation_end}.csv'
     try:
         df_daily = pd.read_csv(filename)
         print(f"Loaded CRSP data from {filename}")
@@ -146,21 +148,50 @@ def form_pairs_wrds(
 
     return matched_pairs
 
+def generate_yearly_tuples(start_date_range, end_date_range):
+    date_tuples = []
+    current_start = start_date_range
+    
+    start_date_range = date.fromisoformat(start_date_range)
+    end_date_range = date.fromisoformat(end_date_range)
+    current_start = start_date_range
+
+    one_year_delta = relativedelta(years=1)
+    one_day_delta = timedelta(days=1)
+    year_step = relativedelta(years=1)
+
+    while current_start <= end_date_range:
+        # Calculate the one-year anniversary date (e.g., 2024-01-01)
+        current_end = current_start + one_year_delta - one_day_delta
+
+        start_str = current_start.isoformat()
+        end_str = current_end.isoformat()
+        date_tuples.append((start_str, end_str))
+        current_start += year_step
+        
+    return date_tuples
 
 if __name__ == "__main__":
-
+    # TODO: replace with your own username
     db = wrds.Connection(wrds_username='sohrac')
+    
+    # TODO: CHANGE THE DATES
+    a = generate_yearly_tuples("1962-01-01","1966-01-01")
+    b = generate_yearly_tuples("2000-01-01","2004-01-01")
+    c = generate_yearly_tuples("2018-01-01","2023-01-01")
+    date_ranges = a + b + c
+   
+    for (formation_start, formation_end) in date_ranges:
 
-    formation_start = "2024-01-01"
-    formation_end   = "2024-12-31"
+        print(f"Formation dates: {formation_start} UNTIL {formation_end}")
+        matched_pairs_df= form_pairs_wrds(db, formation_start, formation_end, 100)
 
-    matched_pairs_df= form_pairs_wrds(db, formation_start, formation_end, 3000)
+        print(f"Total pairs formed: {len(matched_pairs_df)}")
+        print("Top 100 pairs (smallest SSD):")
+        print(matched_pairs_df.head(100))
 
-    print(f"Total pairs formed: {len(matched_pairs_df)}")
-    print("Top 20 pairs (smallest SSD):")
-    print(matched_pairs_df.head(20))
+        # save in directory data
+        matched_pairs_named = get_stock(matched_pairs_df)
 
-    # save in directory data
-    matched_pairs_df.to_csv(f"data\matched_pairs_{formation_start}_{formation_end}.csv", index=False)
-    matched_pairs_named = get_stock(matched_pairs_df)
-    matched_pairs_named.to_csv(f"data\matched_pairs_with_name_ticker_{formation_start}_{formation_end}.csv", index=False)
+        # TODO: REDEFINE WHERE YOU WANT TO SAVE THE FILE. or create a to_upload/total_matched_pairs directory in your folder
+        matched_pairs_named.to_csv(f"to_upload/total_matched_pairs/matched_pairs_{formation_start}_{formation_end}.csv", index=False)
