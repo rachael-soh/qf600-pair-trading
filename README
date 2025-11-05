@@ -1,0 +1,23 @@
+First, run the import_data.py to fetch the data for:
+- 1961-1973
+- 2013-2024
+
+For a standard run:
+1. build_monthly_cohorts.py
+2. run_monthly_trading_ffmr.py
+Notes: 
+- You can change the trade_delay to be true or false. True sets it to delay trade opening by 1 day
+- You can chagne the dates on the parameters. 
+- Need to update the output/input dir pahts depending on the run. 
+- Need to update the dates as well 
+
+For the run per industry:
+1. run industry_monthly_cohorts.py to form the industry pairs
+2. run industry_run_monthly_trading_ffmr.py to simulate trading
+
+For Extension 1 - K-Means/K-Medoids:
+1. run kmeans_monthly_cohorts.py OR kmedoids_monthly_cohorts.py to form pairs
+2. run run_monthly_trading_ffmr.py --> Change the COHORT_DIR to the Kmean/kmeoid output directory
+
+For Extension 2 - Different sigmas:
+1. (if you've run build_monthly_cohorts) just run_monthly_trading_ffmr.py again with Z value changed. 
