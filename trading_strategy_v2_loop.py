@@ -456,18 +456,18 @@ if __name__ == "__main__":
     # industries = ["Agriculture_Forestry_and_Fishing", "Construction", "Finance_Insurance_and_Real_estate", "Manufacturing", "Mining", "Public_administration", 
     #              "Retail_Trade", "Services", "Transportation_Communications_Electric_Gas_and_Sanitary_service", "Wholesale_Trade"]
     # TODO: change dates
-    # date_ranges = [('1962-01-01', '1962-12-31')]
-    date_ranges = [('1962-01-01', '1962-12-31'), ('1963-01-01', '1963-12-31'), ('1964-01-01', '1964-12-31'), ('1965-01-01', '1965-12-31'), ('1966-01-01', '1966-12-31'), 
-                   ('2000-01-01', '2000-12-31'), ('2001-01-01', '2001-12-31'), ('2002-01-01', '2002-12-31'), ('2003-01-01', '2003-12-31'), ('2004-01-01', '2004-12-31'), 
-                   ('2018-01-01', '2018-12-31'), ('2019-01-01', '2019-12-31'), ('2020-01-01', '2020-12-31'), ('2021-01-01', '2021-12-31'), ('2022-01-01', '2022-12-31'), ('2023-01-01', '2023-12-31')] 
+    date_ranges = [('1962-01-01', '1962-12-31')]
+    # date_ranges = [('1962-01-01', '1962-12-31'), ('1963-01-01', '1963-12-31'), ('1964-01-01', '1964-12-31'), ('1965-01-01', '1965-12-31'), ('1966-01-01', '1966-12-31'), 
+    #                ('2000-01-01', '2000-12-31'), ('2001-01-01', '2001-12-31'), ('2002-01-01', '2002-12-31'), ('2003-01-01', '2003-12-31'), ('2004-01-01', '2004-12-31'), 
+    #                ('2018-01-01', '2018-12-31'), ('2019-01-01', '2019-12-31'), ('2020-01-01', '2020-12-31'), ('2021-01-01', '2021-12-31'), ('2022-01-01', '2022-12-31'), ('2023-01-01', '2023-12-31')] 
     # for industry in industries:        
     for formation_start, formation_end in date_ranges:
         # ---LOAD THE CSV FILE ---
         # TODO: CHANGE FILEPATH if needed
         try:
             # pair_file = f'permno_data/industry_pairs/{industry}/{industry}_{formation_start}_{formation_end}.csv'
-            pair_file = f'permno_data/total_matched_pairs/permno_matched_pairs_{formation_start}_{formation_end}.csv'
-            # pair_file = f'permno_matched_pairs_{formation_start}_{formation_end}.csv'
+            # pair_file = f'permno_data/total_matched_pairs/permno_matched_pairs_{formation_start}_{formation_end}.csv'
+            pair_file = f'permno_matched_pairs_{formation_start}_{formation_end}.csv'
             returns = pd.read_csv(pair_file)
         except FileNotFoundError:
             print(f"{pair_file} not found skipping")
@@ -499,8 +499,8 @@ if __name__ == "__main__":
         print(formation_data.head())
         print(formation_data.size)
 
-        trading_start_date = date.fromisoformat(formation_start) + relativedelta(years=1)
-        trading_end_date = date.fromisoformat(formation_end) + relativedelta(years=1)
+        trading_start_date = date.fromisoformat(formation_start) + relativedelta(months=6)
+        trading_end_date = date.fromisoformat(formation_end) + relativedelta(months=6)
         trading_start = trading_start_date.isoformat()
         trading_end = trading_end_date.isoformat()
 
@@ -560,143 +560,142 @@ if __name__ == "__main__":
                             'Days_Held': trade['days_held']
                         })
 
-                top_df = pd.DataFrame(top_data)
+                # top_df = pd.DataFrame(top_data)
                 
-                # top_df.to_csv(f'delay_trade/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
-                top_df.to_csv(f'permno_data/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
-                # top_df.to_csv(f'permno_data/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
-                # top_df.to_csv(f'delay_trade/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
-                # top_df.to_csv(f'top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
+                # # top_df.to_csv(f'delay_trade/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
+                # top_df.to_csv(f'permno_data/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
+                # # top_df.to_csv(f'permno_data/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
+                # # top_df.to_csv(f'delay_trade/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
+                # # top_df.to_csv(f'top_{i}_pairs_with_dates_{trading_start}_{trading_end}.csv', index=False)
 
-                # Summary by pair
-                summary_df = top_df.groupby('Pair').agg({
-                    'Rank': 'first',
-                    'Total_PnL': 'first',
-                    'Avg_PnL': 'first',
-                    'Sharpe_Ratio': 'first',
-                    'Num_Trades': 'first'
-                }).reset_index()
+                # # Summary by pair
+                # summary_df = top_df.groupby('Pair').agg({
+                #     'Rank': 'first',
+                #     'Total_PnL': 'first',
+                #     'Avg_PnL': 'first',
+                #     'Sharpe_Ratio': 'first',
+                #     'Num_Trades': 'first'
+                # }).reset_index()
                 
-                print("\nSummary:")
-                print(summary_df.to_string(index=False))
-                # summary_df.to_csv(f'delay_trade/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
-                summary_df.to_csv(f'permno_data/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
-                # summary_df.to_csv(f'permno_data/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
-                # summary_df.to_csv(f'delay_trade/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
-                # summary_df.to_csv(f'top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
+                # print("\nSummary:")
+                # print(summary_df.to_string(index=False))
+                # # summary_df.to_csv(f'delay_trade/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
+                # summary_df.to_csv(f'permno_data/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
+                # # summary_df.to_csv(f'permno_data/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
+                # # summary_df.to_csv(f'delay_trade/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
+                # # summary_df.to_csv(f'top_{i}_pairs_summary_{trading_start}_{trading_end}.csv', index=False)
                 
-                print("\nGenerating monthly returns CSV for all pairs...")
-                # export_monthly_returns(results, output_file=f'delay_trade/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
-                export_monthly_returns(results, output_file=f'permno_data/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
-                # export_monthly_returns(results, output_file=f'permno_data/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
-                # export_monthly_returns(results, output_file=f'delay_trade/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
-                # export_monthly_returns(results, output_file=f'top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
-                print("✅ Monthly returns successfully exported!")
+                # print("\nGenerating monthly returns CSV for all pairs...")
+                # # export_monthly_returns(results, output_file=f'delay_trade/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
+                # export_monthly_returns(results, output_file=f'permno_data/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
+                # # export_monthly_returns(results, output_file=f'permno_data/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
+                # # export_monthly_returns(results, output_file=f'delay_trade/industry_pairs/{industry}/trading_strategy/top_{i}/top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
+                # # export_monthly_returns(results, output_file=f'top_{i}_monthly_returns_{trading_start}_{trading_end}.csv')
+                # print("✅ Monthly returns successfully exported!")
 
-                # # Visualization: Top 5 pairs - Normalized price charts
-                # print("\n" + "="*80)
-                # print("GENERATING CHARTS FOR TOP 5 PAIRS")
-                # print("="*80)
+                # Visualization: Top 5 pairs - Normalized price charts
+                print("\n" + "="*80)
+                print("GENERATING CHARTS FOR TOP 5 PAIRS")
+                print("="*80)
                 
-                # # # Get top 5 pairs (already sorted above)
-                # top_5 = results_sorted[:5]
+                # # Get top 5 pairs (already sorted above)
+                top_5 = results_sorted[:1]
                 
-                # # Create figure with 5 subplots (one for each pair)
-                # fig, axes = plt.subplots(2, 1, figsize=(14, 20))
-                # fig.suptitle('Top 5 Pairs Trading Strategy - Normalized Cumulative Returns', 
-                #              fontsize=16, fontweight='bold', y=0.995)
+                # Create figure with 5 subplots (one for each pair)
+                fig, axes = plt.subplots(2, 1, figsize=(16, 22))
+                # fig.suptitle('Top 5 Pairs Trading Strategy - Normalized Cumulative Returns', fontsize=16, fontweight='bold', y=0.995)
                 
-                # ax = axes[0]
-                # # Get individual stock data for this pair
-                # s1, s2 = result['stock1'], result['stock2']
+                ax = axes[0]
+                # Get individual stock data for this pair
+                s1, s2 = result['stock1'], result['stock2']
                 
-                # # Fetch formation + trading period data for visualization
-                # full_data = pd.concat([formation_data,trading_data])
+                # Fetch formation + trading period data for visualization
+                full_data = pd.concat([formation_data,trading_data])
                 
-                # s1_data = full_data[full_data['permno'] == s1].sort_values('date').set_index('date')['ret']
-                # s2_data = full_data[full_data['permno'] == s2].sort_values('date').set_index('date')['ret']
+                s1_data = full_data[full_data['permno'] == s1].sort_values('date').set_index('date')['ret']
+                s2_data = full_data[full_data['permno'] == s2].sort_values('date').set_index('date')['ret']
                 
-                # # Calculate cumulative returns (normalized to start at 1.0)
-                # cum_s1 = (1 + s1_data).cumprod()
-                # cum_s2 = (1 + s2_data).cumprod()
+                # Calculate cumulative returns (normalized to start at 1.0)
+                cum_s1 = (1 + s1_data).cumprod()
+                cum_s2 = (1 + s2_data).cumprod()
                 
-                # # Align data
-                # combined = pd.DataFrame({'stock1': cum_s1, 'stock2': cum_s2})
-                # combined = combined.fillna(method='ffill').dropna()
+                # Align data
+                combined = pd.DataFrame({'stock1': cum_s1, 'stock2': cum_s2})
+                combined = combined.fillna(method='ffill').dropna()
                 
-                # # Plot both stocks
-                # ax.plot(combined.index, combined['stock1'], 
-                #         label=f'Stock 1 (PERMNO: {s1})', 
-                #         linewidth=2, color='#1f77b4', alpha=0.8)
-                # ax.plot(combined.index, combined['stock2'], 
-                #         label=f'Stock 2 (PERMNO: {s2})', 
-                #         linewidth=2, color='#ff7f0e', alpha=0.8)
+                # Plot both stocks
+                ax.plot(combined.index, combined['stock1'], 
+                        label=f'Stock 1 (PERMNO: {s1})', 
+                        linewidth=2, color='#1f77b4', alpha=0.8)
+                ax.plot(combined.index, combined['stock2'], 
+                        label=f'Stock 2 (PERMNO: {s2})', 
+                        linewidth=2, color='#ff7f0e', alpha=0.8)
                 
-                # # Mark trade entry and exit points
-                # for trade in result['trades']:
-                #     diverge_date = trade['diverge_date']
-                #     converge_date = trade['converge_date']
+                # Mark trade entry and exit points
+                for trade in result['trades']:
+                    diverge_date = trade['diverge_date']
+                    converge_date = trade['converge_date']
                     
-                #     # Entry point (divergence)
-                #     ax.axvline(x=diverge_date, color='red', linestyle='--', 
-                #                 alpha=0.3, linewidth=1)
+                    # Entry point (divergence)
+                    ax.axvline(x=diverge_date, color='red', linestyle='--', 
+                                alpha=0.3, linewidth=1)
                     
-                #     # Exit point (convergence)
-                #     ax.axvline(x=converge_date, color='green', linestyle='--', 
-                #                 alpha=0.3, linewidth=1)
+                    # Exit point (convergence)
+                    ax.axvline(x=converge_date, color='green', linestyle='--', 
+                                alpha=0.3, linewidth=1)
                 
-                # # Add formation period separator
-                # formation_end = pd.Timestamp(formation_end)
-                # ax.axvline(x=formation_end, color='purple', linestyle='-', 
-                #             linewidth=2, alpha=0.5, label='Formation/Trading Split')
+                # Add formation period separator
+                formation_end = pd.Timestamp(formation_end)
+                ax.axvline(x=formation_end, color='purple', linestyle='-', 
+                            linewidth=2, alpha=0.5, label='Formation/Trading Split')
                 
-                # # Formatting
-                # ax.set_title(f'Rank #1: {result["pair"]}\n'
-                #             f'Sharpe: {result["sharpe_ratio"]:.3f} | '
-                #             f'Trades: {result["num_trades"]} | '
-                #             f'Total PnL: {result["total_pnl"]:.4f}',
-                #             fontsize=11, fontweight='bold', pad=10)
+                # Formatting
+                ax.set_title(f'Rank #1: {result["pair"]}\n'
+                            f'Sharpe: {result["sharpe_ratio"]:.3f} | '
+                            f'Trades: {result["num_trades"]} | '
+                            f'Total PnL: {result["total_pnl"]:.4f}',
+                            fontsize=11, fontweight='bold', pad=10)
                 
-                # ax.set_xlabel('Date', fontsize=10)
-                # ax.set_ylabel('Normalized Price (Starting at 1.0)', fontsize=10)
-                # ax.legend(loc='best', fontsize=9)
-                # ax.grid(True, alpha=0.3, linestyle=':')
+                ax.set_xlabel('Date', fontsize=10)
+                ax.set_ylabel('Normalized Price (Starting at 1.0)', fontsize=10)
+                ax.legend(loc='best', fontsize=9)
+                ax.grid(True, alpha=0.3, linestyle=':')
                 
-                # # Rotate x-axis labels
-                # ax.tick_params(axis='x', rotation=45)
+                # Rotate x-axis labels
+                ax.tick_params(axis='x', rotation=45)
                 
-                # # Format y-axis
-                # ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.2f}'))
+                # Format y-axis
+                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.2f}'))
 
-                # # PLot the spread in axes[1]
-                # ax2 = axes[1]
-                # spread = result['spread_series']
-                # ax2.plot(spread.index, spread, 
-                #          label='Spread (Cumulative Return Difference)', 
-                #          color='darkcyan', linewidth=2, alpha=0.8)
-                # ax2.axhline(y=pair_stats['mu_spread'], color='black', linestyle='-', linewidth=1, label='Mean Spread')
-                # ax2.axhline(y=pair_stats['threshold_upper'], color='red', linestyle='--', linewidth=1, label='Upper Threshold')
-                # ax2.axhline(y=pair_stats['threshold_lower'], color='green', linestyle='--', linewidth=1, label='Lower Threshold')
-                # ax2.set_title('Spread with Entry/Exit Points', fontsize=11, fontweight='bold', pad=10)
-                # ax2.set_xlabel('Date', fontsize=10)
-                # ax2.set_ylabel('Spread Value', fontsize=10)
-                # ax2.legend(loc='best', fontsize=9)
-                # ax2.grid(True, alpha=0.3, linestyle=':')
-                # ax2.tick_params(axis='x', rotation=45)
+                # PLot the spread in axes[1]
+                ax2 = axes[1]
+                spread = result['spread_series']
+                ax2.plot(spread.index, spread, 
+                         label='Spread (Cumulative Return Difference)', 
+                         color='darkcyan', linewidth=2, alpha=0.8)
+                ax2.axhline(y=pair_stats['mu_spread'], color='black', linestyle='-', linewidth=1, label='Mean Spread')
+                ax2.axhline(y=pair_stats['threshold_upper'], color='red', linestyle='--', linewidth=1, label='Upper Threshold')
+                ax2.axhline(y=pair_stats['threshold_lower'], color='green', linestyle='--', linewidth=1, label='Lower Threshold')
+                ax2.set_title('Spread with Entry/Exit Points', fontsize=11, fontweight='bold', pad=10)
+                ax2.set_xlabel('Date', fontsize=10)
+                ax2.set_ylabel('Spread Value', fontsize=10)
+                ax2.legend(loc='best', fontsize=9)
+                ax2.grid(True, alpha=0.3, linestyle=':')
+                ax2.tick_params(axis='x', rotation=45)
 
             
-                # # Adjust layout
-                # plt.tight_layout()
+                # Adjust layout
+                plt.tight_layout()
                 
-                # # Save figure
-                # # plt.savefig('top_5_pairs_normalized_prices.png', dpi=300, bbox_inches='tight')
-                # # print("\n✓ Chart saved as 'top_5_pairs_normalized_prices.png'")
+                # Save figure
+                # plt.savefig('top_5_pairs_normalized_prices.png', dpi=300, bbox_inches='tight')
+                # print("\n✓ Chart saved as 'top_5_pairs_normalized_prices.png'")
                 
-                # # Show plot
-                # plt.show()
+                # Show plot
+                plt.show()
                 
-                # print("\nVisualization complete!")
-                # print("="*80)
+                print("\nVisualization complete!")
+                print("="*80)
                 
                 print("\n\nDetailed trades:")
                 print(top_df.to_string(index=False))

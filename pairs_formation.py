@@ -2,10 +2,10 @@ import wrds
 import pandas as pd
 import numpy as np
 from itertools import combinations
-from typing import Tuple, List
 from datetime import date,timedelta
 from dateutil.relativedelta import relativedelta
 
+# --- Helpers ---
 def fetch_crsp_data(db: wrds.Connection, start_date: str, end_date: str) -> pd.DataFrame:
     """    
     Get common shares (SHRCD in (10 Securities which have not been further defined, 11 Securities which need not be further defined)) 
@@ -43,20 +43,24 @@ def build_cum_total_return_index(df_daily: pd.DataFrame, formation_start, format
     df_daily['ret_num'] = pd.to_numeric(df_daily['ret'], errors='coerce')
     df_daily['date'] = pd.to_datetime(df_daily['date'], errors='coerce')
 
-    # Check for duplicates in the combination of 'date' and 'permco'
+    # Check for duplicates in the combination of 'date' and 'permco', resolve by taking the mean
     if df_daily.duplicated(subset=['date', 'permno']).any():
         print("Duplicate entries found in 'date' and 'permno'. Resolving by taking the mean.")
-        # Resolve duplicates by grouping and taking the mean
         numeric_cols = df_daily.select_dtypes(include=['number']).columns  # Select only numeric columns
         df_daily = df_daily.groupby(['date', 'permno'], as_index=False)[numeric_cols].mean()
 
-    # drop any permnos which have any 0 vol trading days
+    # Drop any permnos which have any 0 vol trading days
     df_daily = df_daily[df_daily['vol'].notna() & (df_daily['vol'] != 0)] 
     vol_wide = df_daily.pivot(index='date', columns='permno', values='vol').sort_index()
     df_daily = df_daily[df_daily['permno'].isin(vol_wide.columns)]
 
+    # Drop any permnos which were delisted during this period
+    delisted_permnos = df_daily[df_daily['dlret'].notna()]['permno'].unique()
+    df_daily = df_daily[~df_daily['permno'].isin(delisted_permnos)]
+
     # Create new table where date is row, permco is col and the values are the daily returns 
     ret_wide = df_daily.pivot(index='date', columns='permno', values='ret_num').sort_index()
+
     # # Screen out stocks that have missing returs
     ret_wide_clean = ret_wide.dropna(axis=1)
     ret_wide_clean
@@ -197,15 +201,9 @@ def get_stock(df, db) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    # TODO: replace with your own username
     db = wrds.Connection(wrds_username='sohrac')
+    crsp_data = fetch_crsp_data(db, '1962-01-01', '1973-12-31')
     
-    # # TODO: CHANGE THE DATES
-    a = generate_yearly_tuples("1962-01-01","1966-01-01")
-    b = generate_yearly_tuples("2000-01-01","2004-01-01")
-    c = generate_yearly_tuples("2018-01-01","2023-01-01")
-    date_ranges = a + b + c
-    # date_ranges = [("1962-01-01","1962-12-31")]
    
     for (formation_start, formation_end) in date_ranges:
 
